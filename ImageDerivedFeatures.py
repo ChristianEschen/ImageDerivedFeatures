@@ -2,7 +2,10 @@ from dataclasses import dataclass
 import nibabel as nib
 import numpy as np
 import os
-
+from skimage.morphology import skeletonize
+from skimage.measure import label
+import sknw
+import matplotlib.pyplot as plt
 
 @dataclass
 class IDP_2D_plus_t:
@@ -160,9 +163,124 @@ class IDP_2D_plus_t:
         # Purpose: This function calculates the ratio of perimeter to total contrast
         # Input: image
         # Output: ratio_perimeter_all_frames_pr_time_to_total_contrast_pr_time
-        
         perimeter_all_frames_pr_time = self.perimeter_all_frames_pr_time(seg_data, init_blood_vessel_threshold)
         total_c_pr_time = self.total_contrast_pr_time(seg_data, init_blood_vessel_threshold)
         ratio_perimeter_all_frames_pr_time_to_total_contrast_pr_time = perimeter_all_frames_pr_time / total_c_pr_time
         return ratio_perimeter_all_frames_pr_time_to_total_contrast_pr_time
-  
+
+    def endpoints(self, seg_data):
+        skeletonized = skeletonize(seg_data)
+        # Find row and column locations that are non-zero
+        (rows,cols) = np.nonzero(skeletonized)
+
+        # Initialize empty list of co-ordinates
+        x_skel_coords = []
+        y_skell_coords = []
+
+        # For each non-zero pixel...
+        for (r,c) in zip(rows,cols):
+
+            # Extract an 8-connected neighbourhood
+            (col_neigh,row_neigh) = np.meshgrid(np.array([c-1,c,c+1]), np.array([r-1,r,r+1]))
+
+            # Cast to int to index into image
+            col_neigh = col_neigh.astype('int')
+            row_neigh = row_neigh.astype('int')
+
+            # Convert into a single 1D array and check for non-zero locations
+            pix_neighbourhood = skeletonized[row_neigh,col_neigh].ravel() != 0
+
+            # If the number of non-zero locations equals 2, add this to 
+            # our list of co-ordinates
+            if np.sum(pix_neighbourhood) == 2:
+                x_skel_coords.append(r)
+                y_skell_coords.append(c)
+        
+        # plt.imshow(seg_data, cmap='gray')
+        # plt.colorbar()
+        # plt.plot(y_skell_coords, x_skel_coords, 'r.')
+        # plt.title("Branch graph")
+        # plt.axis('off')
+        # plt.show()
+        return len(x_skel_coords)
+    
+    def endpoints_all_frames(self, seg_data, init_blood_vessel_threshold=48):
+        # Path: ImageDerivedFeatures.py
+        # Function: endpoints_all_frames
+        # Purpose: This function calculates the endpoints of an image
+        # Input: image
+        # Output: endpoints_all_frames
+        # first remove small objects
+        contrast_sum_vector = self.get_sum_contrast_pr_frame(seg_data)
+        contrast_sum_vector_mm = contrast_sum_vector * \
+            self.pixel_size_x * self.pixel_size_y
+        _, index = self.remove_small_objects(
+            contrast_sum_vector_mm, init_blood_vessel_threshold)
+        seg_data = seg_data[:, :, index]
+        endpoints_all_frames = []
+        for frame in range(seg_data.shape[2]):
+            data = seg_data[:, :, frame]
+            endpoints_all_frames.append(self.endpoints(data))
+        return endpoints_all_frames
+
+    def ratio_endpoints_max_contrast_at_max_contrast(self, seg_data):
+        max_contrast = self.max_contrast(seg_data)
+        max_contrast_frame = self.max_contrast_frame(seg_data)
+        endpoints_max_contrast_at_max_contrast = self.endpoints(seg_data[:, :, max_contrast_frame])
+        ratio_endpoints_max_contrast_at_max_contrast = endpoints_max_contrast_at_max_contrast / max_contrast
+        return ratio_endpoints_max_contrast_at_max_contrast
+    
+    def mean_endpoints_pr_total_contrast(self, seg_data, threshold=48):
+        
+        endpoints_all_frames = self.endpoints_all_frames(seg_data, init_blood_vessel_threshold=threshold)
+        mean_endpoints = np.mean(endpoints_all_frames)
+        total_contrast, _ = self.total_contrast(seg_data, init_blood_vessel_threshold=threshold)
+        endpoints_pr_total_contrast = mean_endpoints / total_contrast
+        return endpoints_pr_total_contrast
+        
+    def time_to_max_contrast(self, seg_data, init_blood_vessel_threshold=48):
+        # Path: ImageDerivedFeatures.py
+        # Function: time_to_max_contrast
+        # Purpose: This function calculates the time to max contrast
+        # Input: image
+        # Output: time_to_max_contrast
+        contrast_sum_vector = self.get_sum_contrast_pr_frame(seg_data)
+        contrast_sum_vector_mm = contrast_sum_vector * self.pixel_size_x * \
+            self.pixel_size_y
+        # Threshold the contrast vector
+        # contrast_sum_vector_mm_copy = contrast_sum_vector_mm.copy()
+        contrast_sum_vector_mm, index = self.remove_small_objects(
+            contrast_sum_vector_mm, init_blood_vessel_threshold)
+        max_contrast_frame = self.max_contrast_frame(seg_data)
+        nr_frames_loading_arteries = max_contrast_frame - min(index)
+        estimated_time_to_max_contrast = nr_frames_loading_arteries * self.pixel_size_z
+        return estimated_time_to_max_contrast
+    
+    def max_endpoints_all_frames(self, seg_data):
+        endpoints_all_frames = self.endpoints_all_frames(seg_data)
+        max_endpoints_all_frames = np.max(endpoints_all_frames)
+        return max_endpoints_all_frames
+    
+    def time_to_max_endpoints(self, seg_data, init_blood_vessel_threshold=48):
+        # first get index with init contrast
+        contrast_sum_vector = self.get_sum_contrast_pr_frame(seg_data)
+        contrast_sum_vector_mm = contrast_sum_vector * self.pixel_size_x * \
+            self.pixel_size_y
+        # Threshold the contrast vector
+        # contrast_sum_vector_mm_copy = contrast_sum_vector_mm.copy()
+        contrast_sum_vector_mm, index = self.remove_small_objects(
+            contrast_sum_vector_mm, init_blood_vessel_threshold)
+        start = min(index)
+        
+        # get index with max endpoints
+        endpoints_all_frames = self.endpoints_all_frames(seg_data, init_blood_vessel_threshold=init_blood_vessel_threshold)
+        max_endpoints_frame = np.argmax(endpoints_all_frames)
+        
+        # calculate time to max endpoints
+        time_to_max_endpoints = (max_endpoints_frame - start) * self.pixel_size_z
+        return time_to_max_endpoints
+    
+    
+       
+        
+        
