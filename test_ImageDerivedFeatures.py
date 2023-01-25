@@ -145,6 +145,28 @@ def test_time_to_max_endpoints():
     seg_data = create_2dp1_data()
     seg_data[3,0:8, 6] = 1
     assert idp.time_to_max_endpoints(seg_data) == 2
+    
+def test_closeness_of_arteries_all_frames():
+    
+    idp = IDP_2D_plus_t(
+        "path/to/root", "path/to/relative", 4, 4, 0.5, "path/to/output")
+    seg_data = create_2dp1_data()
+    idp.closeness_of_arteries_all_frames(seg_data)
+    
+def test_sum_closeness_arteries_at_max_contrast():
+    
+    idp = IDP_2D_plus_t(
+        "path/to/root", "path/to/relative", 4, 4, 0.5, "path/to/output")
+    seg_data = create_2dp1_data()
+    sum_closeness = idp.sum_closeness_arteries_at_max_contrast(seg_data)
+    assert sum_closeness == 50.0 * 4 * 4
+    
+def test_closeness_of_arteries_pr_time():
+    idp = IDP_2D_plus_t(
+        "path/to/root", "path/to/relative", 4, 4, 0.5, "path/to/output")
+    seg_data = create_2dp1_data()
+    sum_closeness_pr_time = idp.closeness_of_arteries_pr_time(seg_data)
+    assert sum_closeness_pr_time == 436.3636363636364
 
 if __name__ == '__main__':
     test_max_contrast()
@@ -161,6 +183,11 @@ if __name__ == '__main__':
     test_mean_endpoints_pr_total_contrast()
     test_time_to_max_contrast()
     test_time_to_max_endpoints()
+    test_closeness_of_arteries_all_frames() # helper function
+    test_sum_closeness_arteries_at_max_contrast()
+    test_closeness_of_arteries_pr_time()
+    
+    
     
     
 

@@ -2,10 +2,11 @@ from dataclasses import dataclass
 import nibabel as nib
 import numpy as np
 import os
-from skimage.morphology import skeletonize
+from skimage.morphology import skeletonize, disk
 from skimage.measure import label
 import sknw
 import matplotlib.pyplot as plt
+import scipy
 
 @dataclass
 class IDP_2D_plus_t:
@@ -280,7 +281,51 @@ class IDP_2D_plus_t:
         time_to_max_endpoints = (max_endpoints_frame - start) * self.pixel_size_z
         return time_to_max_endpoints
     
+    def closeness_of_arteries(self, seg_data):
+        #skeleton_h = skeletonize(seg_data)
+        skeleton_h = seg_data
+        disk_ = disk(1)
+        convolution_h = scipy.signal.convolve2d(skeleton_h, disk_, mode='same')
+        out_h = skeleton_h * convolution_h
+        # plt.imshow(out_h, cmap='magma')
+        # plt.axis('off')
+        # plt.colorbar()
+        # plt.show()
+        return out_h
+        
+        
+    def closeness_of_arteries_all_frames(self, seg_data):
+        closeness_of_arteries_all_frames = []
+        for frame in range(seg_data.shape[2]):
+            data = seg_data[:, :, frame]
+            closeness_of_arteries_all_frames.append(self.closeness_of_arteries(data))
+        return closeness_of_arteries_all_frames
     
+    def sum_closeness_arteries_at_max_contrast(self, seg_data):
+        max_contrast_frame = self.max_contrast_frame(seg_data)
+        closeness_arteries_at_max_contrast = self.closeness_of_arteries(seg_data[:, :, max_contrast_frame])
+        closeness_arteries_at_max_contrast_mm = closeness_arteries_at_max_contrast * self.pixel_size_x * self.pixel_size_y
+        sum_closeness = np.sum(closeness_arteries_at_max_contrast_mm)
+        return sum_closeness
        
+       
+    def closeness_of_arteries_pr_time(self, seg_data, init_blood_vessel_threshold=48):
+        contrast_sum_vector = self.get_sum_contrast_pr_frame(seg_data)
+        contrast_sum_vector_mm = contrast_sum_vector * self.pixel_size_x * \
+            self.pixel_size_y
+        # Threshold the contrast vector
+        # contrast_sum_vector_mm_copy = contrast_sum_vector_mm.copy()
+        _, index = self.remove_small_objects(
+            contrast_sum_vector_mm, init_blood_vessel_threshold)
+        seg_data = seg_data[:, :, index[0]:]
+        closeness_of_arteries_all_frames = self.closeness_of_arteries_all_frames(seg_data)
+        sum_closseness_arteries_all_frames = np.sum(np.array(closeness_of_arteries_all_frames))
+        sum_closseness_arteries_all_frames_mm = sum_closseness_arteries_all_frames * self.pixel_size_x * self.pixel_size_y
+        sum_closseness_arteries_all_frames_mm_pr_time = sum_closseness_arteries_all_frames_mm / (seg_data.shape[2] * self.pixel_size_z)
+        return sum_closseness_arteries_all_frames_mm_pr_time
+        
+        
+        
+        
         
         
